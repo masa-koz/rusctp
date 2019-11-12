@@ -1,0 +1,1 @@
+rusctp is an implementation of the Stream Control Transmission Protocol (SCTP) as specified by the IETF.

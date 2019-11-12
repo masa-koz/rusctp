@@ -1,0 +1,33 @@
+[package]
+name = "rusctp"
+version = "0.1.0"
+authors = ["Masahiro Kozuka <masa.koz@gmail.com>"]
+edition = "2018"
+description = "An implementation of the Stream Control Transmission Protocol(SCTP)"
+repository = "https://github.com/masa-koz/rusctp"
+readme = "README.md"
+keywords = ["sctp"]
+categories = ["network-programming"]
+license = "MIT"
+include = [
+	"/*.md",
+	"/*.toml",
+	"/examples",
+	"/src",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.7"
+mio = "0.6"
+net2 = "^0.2"
+nom = "5"
+rusticata-macros = "2.0"
+byteorder = "1"
+crc = "1.8"
+rust-crypto = "^0.2"
+sna = "0.1"
+docopt = "1"
+log = "0.4"
+env_logger = "0.7.1"
