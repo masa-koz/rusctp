@@ -29,6 +29,7 @@ sna = "0.1"
 log = "0.4"
 
 [dev-dependencies]
-mio = "0.6"
+mio = { git = "https://github.com/tokio-rs/mio" }
 env_logger = "0.7.1"
 docopt = "1"
+udp_sas_mio = { git = "https://github.com/masa-koz/udp_sas_mio", branch="kozuka-add_support_windows" }

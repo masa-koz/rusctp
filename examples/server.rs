@@ -4,7 +4,7 @@ extern crate log;
 extern crate env_logger;
 
 use mio::net::UdpSocket;
-use mio::{Events, Poll, PollOpt, Ready, Token};
+use mio::*;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -50,26 +50,23 @@ fn main() {
 
     let secret_key = (0..32).map(|_| rand::random::<u8>()).collect::<Vec<u8>>();
 
-    let poll = Poll::new().unwrap();
+    let mut poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(1024);
 
-    let addrs = [SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-        server_udp_port,
-    )];
-    let udpsock4 = std::net::UdpSocket::bind(&addrs[..]).unwrap();
-    let udpsock4 = UdpSocket::from_socket(udpsock4).unwrap();
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), server_udp_port);
+    let udpsock4 = UdpSocket::bind(addr).unwrap();
 
-    let addrs = [SocketAddr::new(
+    let addr = SocketAddr::new(
         IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)),
         server_udp_port,
-    )];
-    let udpsock6 = std::net::UdpSocket::bind(&addrs[..]).unwrap();
-    let udpsock6 = UdpSocket::from_socket(udpsock6).unwrap();
+    );
+    let udpsock6 = UdpSocket::bind(addr).unwrap();
 
-    poll.register(&udpsock4, Token(0), Ready::readable(), PollOpt::edge())
+    poll.registry()
+        .register(&udpsock4, Token(0), Interests::READABLE)
         .unwrap();
-    poll.register(&udpsock6, Token(1), Ready::readable(), PollOpt::edge())
+    poll.registry()
+        .register(&udpsock6, Token(1), Interests::READABLE)
         .unwrap();
 
     let mut raddr: Option<SocketAddr> = None;
@@ -122,14 +119,14 @@ fn main() {
                     &udpsock6
                 };
 
-                if event.readiness().is_writable() {
+                if event.is_writable() {
                     if !sbuf.is_empty() && raddr.is_some() {
                         let udpsock = if raddr.unwrap().is_ipv4() {
                             &udpsock4
                         } else {
                             &udpsock6
                         };
-                        match udpsock.send_to(&sbuf, &raddr.unwrap()) {
+                        match udpsock.send_to(&sbuf, raddr.unwrap()) {
                             Ok(olen) => {
                                 debug!("sent {} bytes to {}", olen, raddr.unwrap());
                                 sbuf.clear();
@@ -142,26 +139,18 @@ fn main() {
                             }
                         };
                         if event.token() == Token(0) {
-                            poll.reregister(
-                                &udpsock4,
-                                Token(0),
-                                Ready::readable(),
-                                PollOpt::edge(),
-                            )
-                            .unwrap();
+                            poll.registry()
+                                .reregister(&udpsock4, Token(0), Interests::READABLE)
+                                .unwrap();
                         } else {
-                            poll.reregister(
-                                &udpsock6,
-                                Token(1),
-                                Ready::readable(),
-                                PollOpt::edge(),
-                            )
-                            .unwrap();
+                            poll.registry()
+                                .reregister(&udpsock6, Token(1), Interests::READABLE)
+                                .unwrap();
                         }
                     }
                 }
 
-                if event.readiness().is_readable() {
+                if event.is_readable() {
                     'recv: loop {
                         let (len, from) = match udpsock.recv_from(&mut rbuf) {
                             Ok(v) => v,
@@ -205,7 +194,7 @@ fn main() {
                                     off += consumed;
                                 }
                                 Ok((None, _)) => {
-                                    match udpsock.send_to(&sbuf, &from) {
+                                    match udpsock.send_to(&sbuf, from.clone()) {
                                         Ok(olen) => {
                                             debug!("sent {} bytes to {}", olen, from);
                                             sbuf.clear();
@@ -244,7 +233,7 @@ fn main() {
                                 Err(e) => {
                                     error!("SctpAssociation::recv() failed: {:?}", e);
                                     if !sbuf.is_empty() {
-                                        match udpsock.send_to(&sbuf, &from) {
+                                        match udpsock.send_to(&sbuf, from.clone()) {
                                             Ok(olen) => {
                                                 debug!("sent {} bytes to {}", olen, from);
                                             }
@@ -305,7 +294,7 @@ fn main() {
                         } else {
                             &udpsock6
                         };
-                        match udpsock.send_to(&sbuf, &raddr.unwrap()) {
+                        match udpsock.send_to(&sbuf, raddr.unwrap()) {
                             Ok(olen) => {
                                 debug!("sent {} bytes to {}", olen, raddr.unwrap());
                             }
@@ -321,10 +310,12 @@ fn main() {
             }
             if !sbuf.is_empty() {
                 if raddr.unwrap().is_ipv4() {
-                    poll.reregister(&udpsock4, Token(0), Ready::writable(), PollOpt::edge())
+                    poll.registry()
+                        .reregister(&udpsock4, Token(0), Interests::WRITABLE)
                         .unwrap();
                 } else {
-                    poll.reregister(&udpsock6, Token(1), Ready::writable(), PollOpt::edge())
+                    poll.registry()
+                        .reregister(&udpsock6, Token(1), Interests::WRITABLE)
                         .unwrap();
                 }
             }
