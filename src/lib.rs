@@ -768,10 +768,11 @@ impl SctpAssociation {
             off += consumed;
 
             trace!(
-                "{} recv CHUNK type={}, from={}",
+                "{} recv CHUNK type={}, from={}, state={:?}",
                 self.trace_id,
                 chunk.get_type(),
-                from
+                from,
+                self.state
             );
             if chunk.is_control() && data_appears {
                 self.abort(

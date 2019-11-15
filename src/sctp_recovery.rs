@@ -482,7 +482,7 @@ impl SctpRecovery {
     }
 
     fn on_t1_timeout(&mut self, now: Instant) {
-        trace!("{} t1 INIT timeout fired", self.trace_id);
+        trace!("{} T1 INIT timeout fired", self.trace_id);
 
         for opt in self.path_list.iter_mut() {
             if let Some(path) = opt {

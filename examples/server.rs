@@ -194,7 +194,7 @@ fn main() {
                                     off += consumed;
                                 }
                                 Ok((None, _)) => {
-                                    match udpsock.send_to(&sbuf, from.clone()) {
+                                    match udpsock.send_to(&sbuf, from) {
                                         Ok(olen) => {
                                             debug!("sent {} bytes to {}", olen, from);
                                             sbuf.clear();
@@ -233,7 +233,7 @@ fn main() {
                                 Err(e) => {
                                     error!("SctpAssociation::recv() failed: {:?}", e);
                                     if !sbuf.is_empty() {
-                                        match udpsock.send_to(&sbuf, from.clone()) {
+                                        match udpsock.send_to(&sbuf, from) {
                                             Ok(olen) => {
                                                 debug!("sent {} bytes to {}", olen, from);
                                             }

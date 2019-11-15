@@ -8,7 +8,7 @@ extern crate log;
 extern crate env_logger;
 
 use env_logger::Target;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use mio::net::UdpSocket;
 use mio::*;
@@ -59,8 +59,10 @@ fn main() {
     let mut poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(1024);
 
-    let udpsock4 = UdpSocket::bind("0.0.0.0:0".parse::<SocketAddr>().unwrap()).unwrap();
-    let udpsock6 = UdpSocket::bind(":::0:0".parse::<SocketAddr>().unwrap()).unwrap();
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+    let udpsock4 = UdpSocket::bind(addr).unwrap();
+    let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)), 0);
+    let udpsock6 = UdpSocket::bind(addr).unwrap();
 
     let mut assoc = SctpAssociation::connect(
         rand::random::<u16>(),
@@ -70,18 +72,15 @@ fn main() {
     )
     .unwrap();
 
-    if let Ok((_, rip1)) = assoc.send(&mut sbuf) {
-        rip = Some(rip1);
-    }
-
     poll.registry()
-        .register(&udpsock4, Token(0), Interests::WRITABLE)
+        .register(&udpsock4, Token(0), Interests::READABLE)
         .unwrap();
     poll.registry()
-        .register(&udpsock6, Token(1), Interests::WRITABLE)
+        .register(&udpsock6, Token(1), Interests::READABLE)
         .unwrap();
 
     let mut send_count = 0;
+    let mut first_try = true;
     'main: loop {
         if assoc.is_established() {
             for _ in 0..5 {
@@ -116,12 +115,21 @@ fn main() {
 
         let timeout = assoc.get_timeout();
         'poll: loop {
-            poll.poll(&mut events, timeout).unwrap();
-
-            if events.is_empty() {
-                // timeout
-                debug!("timed out");
-                assoc.on_timeout();
+            if !first_try {
+                let before_time = std::time::Instant::now();
+                poll.poll(&mut events, timeout).unwrap();
+                debug!(
+                    "duration={:?}, timeout={:?}",
+                    std::time::Instant::now().duration_since(before_time),
+                    timeout
+                );
+                if events.is_empty() {
+                    // timeout
+                    debug!("timed out");
+                    assoc.on_timeout();
+                }
+            } else {
+                first_try = false;
             }
             for event in &events {
                 if event.is_writable() {
@@ -148,6 +156,7 @@ fn main() {
                         };
                     }
 
+                    debug!("Interests::WRITABLE->Interests::READABLE");
                     if event.token() == Token(0) {
                         poll.registry()
                             .reregister(&udpsock4, Token(0), Interests::READABLE)
@@ -201,12 +210,16 @@ fn main() {
                                 }
                                 Err(e) => {
                                     error!("SctpAssociation::recv() failed: {:?}", e);
+                                    if sbuf.is_empty() {
+                                        continue 'recv;
+                                    }
                                     match udpsock.send_to(&sbuf, from) {
                                         Ok(olen) => {
                                             debug!("sent {} bytes to {}", olen, from);
                                         }
                                         Err(e) => {
                                             if e.kind() == std::io::ErrorKind::WouldBlock {
+                                                rip = Some(from.ip());
                                                 break 'poll;
                                             }
                                             error!("send_to() failed: to {}, {:?}", from, e);
@@ -222,7 +235,6 @@ fn main() {
             }
             break 'poll;
         }
-
         if sbuf.is_empty() {
             'send: loop {
                 match assoc.send(&mut sbuf) {
@@ -262,6 +274,7 @@ fn main() {
         }
 
         if !sbuf.is_empty() {
+            debug!("Interests::READABLE->Interests::WRITABLE");
             if rip.unwrap().is_ipv4() {
                 poll.registry()
                     .reregister(&udpsock4, Token(0), Interests::WRITABLE)
