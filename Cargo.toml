@@ -20,14 +20,15 @@ include = [
 
 [dependencies]
 rand = "0.7"
-mio = "0.6"
-net2 = "^0.2"
 nom = "5"
 rusticata-macros = "2.0"
 byteorder = "1"
 crc = "1.8"
 rust-crypto = "^0.2"
 sna = "0.1"
-docopt = "1"
 log = "0.4"
+
+[dev-dependencies]
+mio = "0.6"
 env_logger = "0.7.1"
+docopt = "1"

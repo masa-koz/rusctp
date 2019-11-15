@@ -1,4 +1,3 @@
-extern crate net2;
 extern crate rusctp;
 #[macro_use]
 extern crate log;
