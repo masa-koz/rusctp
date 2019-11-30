@@ -5,6 +5,7 @@ extern crate env_logger;
 
 use mio::net::UdpSocket;
 use mio::{Events, Poll, PollOpt, Ready, Token};
+use net2::UdpBuilder;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -64,7 +65,10 @@ fn main() {
         IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)),
         server_udp_port,
     )];
-    let udpsock6 = std::net::UdpSocket::bind(&addrs[..]).unwrap();
+    //let udpsock6 = std::net::UdpSocket::bind(&addrs[..]).unwrap();
+    let udp6_builder = UdpBuilder::new_v6().unwrap();
+    udp6_builder.only_v6(true).unwrap();
+    let udpsock6 = udp6_builder.bind(&addrs[..]).unwrap();
     let udpsock6 = UdpSocket::from_socket(udpsock6).unwrap();
 
     poll.register(&udpsock4, Token(0), Ready::readable(), PollOpt::edge())
