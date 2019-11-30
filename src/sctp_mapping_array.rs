@@ -40,10 +40,10 @@ impl SctpMappingArray {
 
     pub fn update(&mut self, tsn: u32) -> Result<Option<u32>> {
         if SerialNumber(tsn) < self.base_tsn {
-            return Err(SctpError::InvalidValue);
+            return Err(SctpError::Done);
         };
         if SerialNumber(tsn) < self.cummulative_tsn {
-            return Err(SctpError::InvalidValue);
+            return Err(SctpError::Done);
         }
         let gap = if tsn >= self.base_tsn.0 {
             tsn - self.base_tsn.0

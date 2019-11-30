@@ -272,7 +272,7 @@ impl SctpRecovery {
             path.random_value = 0;
             Ok(())
         } else {
-            Err(SctpError::NotFound)
+            Err(SctpError::InvalidPathId)
         }
     }
 
@@ -282,7 +282,7 @@ impl SctpRecovery {
                 return Ok((confirmed, state));
             }
         }
-        Err(SctpError::NotFound)
+        Err(SctpError::InvalidPathId)
     }
 
     pub fn get_primary_path(&self) -> Option<usize> {
@@ -298,14 +298,14 @@ impl SctpRecovery {
                 }
             }
         }
-        Err(SctpError::NotFound)
+        Err(SctpError::InvalidPathId)
     }
 
     pub fn get_path_mtu(&self, pathid: usize) -> Result<usize> {
         if let Some(path) = self.get_path(pathid) {
             Ok(path.mtu)
         } else {
-            Err(SctpError::NotFound)
+            Err(SctpError::InvalidPathId)
         }
     }
 
@@ -313,7 +313,7 @@ impl SctpRecovery {
         if let Some(path) = self.get_path(pathid) {
             Ok(path.cwnd.checked_sub(path.flight).unwrap_or(0))
         } else {
-            Err(SctpError::NotFound)
+            Err(SctpError::InvalidPathId)
         }
     }
 
@@ -325,7 +325,7 @@ impl SctpRecovery {
             );
             Ok(window)
         } else {
-            Err(SctpError::NotFound)
+            Err(SctpError::InvalidPathId)
         }
     }
 
