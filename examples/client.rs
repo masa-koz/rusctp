@@ -82,37 +82,6 @@ fn main() {
 
     let mut send_count = 0;
     'main: loop {
-        if assoc.is_established() {
-            for _ in 0..5 {
-                if send_count < send_bytes {
-                    assoc.write_into_stream(0, user_data, false, true).unwrap();
-                    send_count += user_data.len();
-                    info!("write {} bytes to Stream {}", user_data.len(), 0);
-                }
-            }
-            if assoc.get_pending().count() == 0 {
-                assoc.close().unwrap();
-            }
-        }
-
-        if !assoc.is_closed() {
-            for strmid in assoc.get_readable().collect::<Vec<u16>>() {
-                readbuf.clear();
-                match assoc.read_from_stream(strmid, &mut readbuf) {
-                    Ok(len) => {
-                        info!("read {} bytes from Stream {}", len, strmid);
-                    }
-                    Err(e) => {
-                        error!("SctpAssociation::read_from_stream() failed {:?}", e);
-                        break;
-                    }
-                }
-            }
-        }
-        if assoc.is_closed() {
-            break 'main;
-        }
-
         let timeout = assoc.get_timeout();
         'poll: loop {
             poll.poll(&mut events, timeout).unwrap();
@@ -218,6 +187,37 @@ fn main() {
                 }
             }
             break 'poll;
+        }
+
+        if assoc.is_established() {
+            for _ in 0..5 {
+                if send_count < send_bytes {
+                    assoc.write_into_stream(0, user_data, false, true).unwrap();
+                    send_count += user_data.len();
+                    info!("write {} bytes to Stream {}", user_data.len(), 0);
+                }
+            }
+            if assoc.get_pending().count() == 0 {
+                assoc.close().unwrap();
+            }
+        }
+
+        if !assoc.is_closed() {
+            for strmid in assoc.get_readable().collect::<Vec<u16>>() {
+                readbuf.clear();
+                match assoc.read_from_stream(strmid, &mut readbuf) {
+                    Ok(len) => {
+                        info!("read {} bytes from Stream {}", len, strmid);
+                    }
+                    Err(e) => {
+                        error!("SctpAssociation::read_from_stream() failed {:?}", e);
+                        break;
+                    }
+                }
+            }
+        }
+        if assoc.is_closed() {
+            break 'main;
         }
 
         if sbuf.is_empty() {
