@@ -7,6 +7,7 @@ extern crate env_logger;
 use env_logger::Target;
 use mio::net::UdpSocket;
 use mio::{Events, Poll, PollOpt, Ready, Token};
+use net2::UdpBuilder;
 use std::net::{IpAddr, SocketAddr};
 
 use rusctp::*;
@@ -57,7 +58,9 @@ fn main() {
     let udpsock4 = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
     let udpsock4 = UdpSocket::from_socket(udpsock4).unwrap();
 
-    let udpsock6 = std::net::UdpSocket::bind(":::0").unwrap();
+    let udp6_builder = UdpBuilder::new_v6().unwrap();
+    udp6_builder.only_v6(true).unwrap();
+    let udpsock6 = udp6_builder.bind(":::0").unwrap();
     let udpsock6 = UdpSocket::from_socket(udpsock6).unwrap();
 
     let mut assoc = SctpAssociation::connect(

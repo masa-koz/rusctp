@@ -30,5 +30,6 @@ log = "0.4"
 
 [dev-dependencies]
 mio = "0.6"
+net2 = "0.2"
 env_logger = "0.7.1"
 docopt = "1"
