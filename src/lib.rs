@@ -38,16 +38,26 @@ const DEFAULT_ACK_FREQ: u32 = 2;
 
 const DEFAULT_MTU: usize = 1500;
 
+// A SCTP Error.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub enum SctpError {
+    // There is no more task to do.
     Done = -1,
-    InvalidChunk = -2,
-    TooShort = -3,
-    InvalidValue = -4,
-    ProtocolViolation = -5,
-    NotFound = -6,
-    OOTB = -7,
+    // The passed buffer is too short.
+    BufferTooShort = -2,
+    // The passed packet cannot be parsed because it includes any invalid chunk.
+    InvalidChunk = -3,
+    // The operation fails because the status of the associaion is not intended one.
+    InvalidState = -4,
+    // The passed stream id is not valid one.
+    InvalidStreamId = -5,
+    // The passed path id is not valid one.
+    InvalidPathId = -6,
+    // The passed packet contains any information which is not according to the specification.
+    ProtocolViolation = -7,
+    // The passed packet is an "out of the blue" (OOTB).
+    OOTB = -8,
 }
 
 #[derive(Debug)]
@@ -756,8 +766,13 @@ impl SctpAssociation {
         let mut off = 0;
         let recv_time = Instant::now();
         let pathid = self.get_pathid(&from);
-        let mut data_appears = false;
 
+        if pathid.is_none() {
+            self.abort(sbuf, None);
+            return Err(SctpError::OOTB);
+        }
+
+        let mut data_appears = false;
         while off < rbuf.len() {
             let (chunk, consumed) = match SctpChunk::from_bytes(&rbuf[off..]) {
                 Ok(v) => v,
@@ -787,11 +802,6 @@ impl SctpAssociation {
                 return Err(SctpError::ProtocolViolation);
             }
 
-            if pathid.is_none() {
-                self.abort(sbuf, None);
-                return Err(SctpError::OOTB);
-            }
-
             match chunk {
                 SctpChunk::Data(data_chunk) => {
                     self.recv_data_count += 1;
@@ -799,25 +809,25 @@ impl SctpAssociation {
                     let stream_id = data_chunk.proto_id;
                     let tsn = data_chunk.tsn;
 
-                    self.mapping_array.update(tsn)?;
+                    if let Ok(_) = self.mapping_array.update(tsn) {
+                        let stream_in = match self.stream_in.get_mut(stream_id as usize) {
+                            Some(v) => v,
+                            None => {
+                                trace!("{} invalid id stream_in={}", self.trace_id, stream_id);
+                                continue;
+                            }
+                        };
+                        stream_in.recv(data_chunk)?;
 
-                    let stream_in = match self.stream_in.get_mut(stream_id as usize) {
-                        Some(v) => v,
-                        None => {
-                            trace!("{} invalid id stream_in={}", self.trace_id, stream_id);
-                            continue;
+                        self.num_data_pkts_seen += 1;
+                        if !self.delayed_ack || self.num_data_pkts_seen >= self.ack_freq {
+                            self.send_sack = true;
+                        } else {
+                            self.set_delayed_ack_timer();
                         }
-                    };
-                    stream_in.recv(data_chunk)?;
-
-                    self.num_data_pkts_seen += 1;
-                    if !self.delayed_ack || self.num_data_pkts_seen >= self.ack_freq {
-                        self.send_sack = true;
-                    } else {
-                        self.set_delayed_ack_timer();
+                        data_appears = true;
+                        self.last_data_from = pathid;
                     }
-                    data_appears = true;
-                    self.last_data_from = pathid;
                 }
                 SctpChunk::InitAck(initack) => {
                     let remote_addresses: Vec<IpAddr> = initack
@@ -849,8 +859,7 @@ impl SctpAssociation {
                     let init = match self.recovery.on_t1_chunk_received(recv_time) {
                         Some(SctpChunk::Init(v)) => v,
                         Some(_) | None => {
-                            trace!("{} no INIT", self.trace_id);
-                            return Err(SctpError::InvalidValue);
+                            panic!("{} Cannot find an INIT chunk", self.trace_id);
                         }
                     };
                     self.mapping_array.initialize(initack.init_tsn).unwrap();
@@ -935,8 +944,7 @@ impl SctpAssociation {
                     match self.recovery.on_t1_chunk_received(recv_time) {
                         Some(SctpChunk::CookieEcho(..)) => {}
                         Some(_) | None => {
-                            trace!("{} no COOKIE-ECHO", self.trace_id);
-                            return Err(SctpError::InvalidValue);
+                            panic!("{} Cannot find a COOKIE-ECHO chunk", self.trace_id);
                         }
                     };
                     self.recovery.establish();
@@ -956,7 +964,7 @@ impl SctpAssociation {
             Some(v) => v,
             None => {
                 trace!("{} invalid id stream_in={}", self.trace_id, stream_id);
-                return Err(SctpError::InvalidValue);
+                return Err(SctpError::InvalidStreamId);
             }
         };
         let len = match stream_in.read(wbuf) {
@@ -989,7 +997,7 @@ impl SctpAssociation {
             Some(v) => v,
             None => {
                 trace!("{} invalid id stream_out={}", self.trace_id, stream_id);
-                return Err(SctpError::InvalidValue);
+                return Err(SctpError::InvalidStreamId);
             }
         };
         let len = match stream_out.write(rbuf, is_unordered, is_complete) {
@@ -1339,7 +1347,7 @@ impl SctpAssociation {
     pub fn close(&mut self) -> Result<()> {
         match self.state {
             SctpAssociationState::CookieWait | SctpAssociationState::CookieEchoed => {
-                Err(SctpError::InvalidValue)
+                Err(SctpError::InvalidState)
             }
             SctpAssociationState::Established => {
                 if self

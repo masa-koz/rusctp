@@ -1036,7 +1036,7 @@ pub struct SctpStateCookie {
 impl SctpStateCookie {
     pub fn from_bytes(key: &[u8], bytes: &[u8]) -> Result<(SctpStateCookie, usize)> {
         if bytes.len() < 32 {
-            return Err(SctpError::TooShort);
+            return Err(SctpError::BufferTooShort);
         }
         let mut mac = Hmac::new(Sha256::new(), key);
         mac.input(&bytes[0..(bytes.len() - 32)]);
