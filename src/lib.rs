@@ -62,25 +62,35 @@ pub enum SctpError {
 
 #[derive(Debug)]
 pub struct SctpAssociation {
-    pub src_port: u16,
+    // Peer's port for SCTP common header.
     pub dst_port: u16,
-    pub my_vtag: u32,
+    // Local port for SCTP common header.
+    pub src_port: u16,
+    // Peer's verification tag.
     pub peer_vtag: u32,
-
+    // Local verification tag.
+    pub my_vtag: u32,
+    // Current state of this association.
     state: SctpAssociationState,
-
-    a_rwnd: u32,
-
+    // This represents the local buffer space in number of bytes.
+    my_rwnd: u32,
+    // This represents the initial value of TSN for sending DATA.
     initial_tsn: SerialNumber<u32>,
-
+    // The list of the peer's addresses which belong to this association.
     raddr_list: VecDeque<SctpRemoteAddress>,
+    // The list of the local addresses which belong to this association.
     laddr_list: VecDeque<SctpLocalAddress>,
-
+    // This represents whether the delayed acknowledgement algorithm is enabled or not.
     delayed_ack: bool,
+    // The number of packets including DATA which are seen since last sending of SACK.
     num_data_pkts_seen: u32,
+    // The maximum interval between receiving DATA and sending SACK.
     ack_delay: Duration,
+    // The threshold is used to derermine whether to wait for sending SACK.
     ack_freq: u32,
+    // Delaying Ack timeout expiration time.
     delayed_ack_timeout: Option<Instant>,
+    // This represents whether SACK will be sent when send() is called.
     send_sack: bool,
 
     last_data_from: Option<usize>,
@@ -565,7 +575,7 @@ impl SctpAssociation {
             my_vtag: vtag,
             peer_vtag: 0,
             state: SctpAssociationState::Closed,
-            a_rwnd: a_rwnd,
+            my_rwnd: a_rwnd,
             initial_tsn: SerialNumber(init_tsn),
             mapping_array: SctpMappingArray::new(trace_id.clone()),
 
@@ -819,14 +829,17 @@ impl SctpAssociation {
                         };
                         stream_in.recv(data_chunk)?;
 
-                        self.num_data_pkts_seen += 1;
-                        if !self.delayed_ack || self.num_data_pkts_seen >= self.ack_freq {
-                            self.send_sack = true;
-                        } else {
-                            self.set_delayed_ack_timer();
+                        if !data_appears {
+                            self.num_data_pkts_seen += 1;
+                            if !self.delayed_ack || self.num_data_pkts_seen >= self.ack_freq {
+                                self.send_sack = true;
+                            } else {
+                                self.set_delayed_ack_timer();
+                            }
+                            data_appears = true;
+
+                            self.last_data_from = pathid;
                         }
-                        data_appears = true;
-                        self.last_data_from = pathid;
                     }
                 }
                 SctpChunk::InitAck(initack) => {
@@ -1370,8 +1383,8 @@ impl SctpAssociation {
 
     fn get_rwnd(&self) -> u32 {
         let len: usize = self.stream_in.iter().map(|v| v.len()).sum();
-        let rwnd: u32 = if self.a_rwnd > len as u32 {
-            self.a_rwnd - len as u32
+        let rwnd: u32 = if self.my_rwnd > len as u32 {
+            self.my_rwnd - len as u32
         } else {
             0
         };
