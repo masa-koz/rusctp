@@ -27,9 +27,13 @@ crc = "1.8"
 rust-crypto = "^0.2"
 sna = "0.1"
 log = "0.4"
+libc = "0.2"
 
 [dev-dependencies]
 mio = "0.6"
 net2 = "0.2"
 env_logger = "0.7.1"
 docopt = "1"
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]

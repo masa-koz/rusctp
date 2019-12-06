@@ -22,6 +22,7 @@ use crate::sctp_recovery::{SctpPathState, SctpRecovery};
 use crate::sctp_stream::{SctpStreamIn, SctpStreamIter, SctpStreamOut};
 pub use sctp_pkt::*;
 
+mod ffi;
 mod sctp_collections;
 mod sctp_mapping_array;
 pub mod sctp_pkt;
