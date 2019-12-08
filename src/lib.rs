@@ -437,7 +437,7 @@ impl SctpAssociation {
                 new_header.to_bytes(sbuf).unwrap();
                 init_ack.to_bytes(sbuf).unwrap();
                 SctpAssociation::set_checksum(sbuf);
-                trace!("send INIT-ACK to {}", rip);
+                trace!("send INIT-ACK({} bytes) to {}", sbuf.len(), rip);
                 return Ok((None, consumed));
             }
             SctpChunk::CookieEcho(v) => {

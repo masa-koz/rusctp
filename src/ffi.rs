@@ -2,15 +2,13 @@ extern crate os_socketaddr;
 #[cfg(target_family = "windows")]
 extern crate winapi;
 
-use std::ffi;
 use std::ptr;
 use std::slice;
+use std::sync::atomic;
 
-use libc::c_char;
 use libc::c_int;
 use libc::c_void;
 use libc::size_t;
-use libc::ssize_t;
 
 #[cfg(target_family = "unix")]
 use libc::sockaddr;
@@ -20,6 +18,67 @@ use winapi::shared::ws2def::SOCKADDR as sockaddr;
 use os_socketaddr::OsSocketAddr;
 
 use crate::*;
+
+struct Logger {
+    cb: extern "C" fn(line: *const u8, argp: *mut c_void),
+    argp: std::sync::atomic::AtomicPtr<c_void>,
+}
+
+impl log::Log for Logger {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record) {
+        let line = format!("{}: {}\0", record.target(), record.args());
+        (self.cb)(line.as_ptr(), self.argp.load(atomic::Ordering::Relaxed));
+    }
+
+    fn flush(&self) {}
+}
+
+#[repr(C)]
+pub enum LogLevel {
+    /// A level lower than all log levels.
+    _Off = 0,
+    /// Corresponds to the `Error` log level.
+    _Error = 1,
+    /// Corresponds to the `Warn` log level.
+    _Warn = 2,
+    /// Corresponds to the `Info` log level.
+    _Info = 3,
+    /// Corresponds to the `Debug` log level.
+    _Debug = 4,
+    /// Corresponds to the `Trace` log level.
+    _Trace = 5,
+}
+
+#[no_mangle]
+pub extern "C" fn rusctp_enable_logging(
+    cb: extern "C" fn(line: *const u8, argp: *mut c_void),
+    argp: *mut c_void,
+    max_level: LogLevel,
+) -> c_int {
+    let argp = atomic::AtomicPtr::new(argp);
+    let logger = Box::new(Logger { cb, argp });
+
+    if log::set_boxed_logger(logger).is_err() {
+        return -1;
+    }
+
+    let max_level = match max_level {
+        LogLevel::_Off => log::LevelFilter::Off,
+        LogLevel::_Error => log::LevelFilter::Error,
+        LogLevel::_Warn => log::LevelFilter::Warn,
+        LogLevel::_Info => log::LevelFilter::Info,
+        LogLevel::_Debug => log::LevelFilter::Debug,
+        LogLevel::_Trace => log::LevelFilter::Trace,
+    };
+
+    log::set_max_level(max_level);
+
+    0
+}
 
 #[no_mangle]
 pub extern "C" fn rusctp_version() -> *const u8 {
@@ -54,9 +113,8 @@ pub extern "C" fn rusctp_header_info(
 pub extern "C" fn rusctp_accept(
     from_sa: &sockaddr,
     from_salen: size_t,
-    sh: &SctpCommonHeader,
     rbuf: *mut u8,
-    rbuf_len: size_t,
+    rbuf_len: *mut size_t,
     sbuf: *mut u8,
     sbuf_len: *mut size_t,
     secret: *mut u8,
@@ -66,26 +124,47 @@ pub extern "C" fn rusctp_accept(
         return ptr::null_mut();
     }
     let from = unsafe {
-        OsSocketAddr::from_raw_parts(&from_sa as *const _ as *const u8, from_salen).into_addr()
+        OsSocketAddr::from_raw_parts(from_sa as *const _ as *const u8, from_salen).into_addr()
     };
     if from.is_none() {
         return ptr::null_mut();
     }
-    let rbuf = unsafe { slice::from_raw_parts_mut(rbuf, rbuf_len) };
+    let rbuf = unsafe { slice::from_raw_parts_mut(rbuf, *rbuf_len) };
     let mut sbuf = unsafe { Vec::from_raw_parts(sbuf, 0, *sbuf_len) };
     let secret = unsafe { slice::from_raw_parts_mut(secret, secret_len) };
 
-    match SctpAssociation::accept(&from.unwrap().ip(), sh, &rbuf, &mut sbuf, &secret) {
-        Ok((Some(assoc), consumed)) => unsafe {
-            *sbuf_len = consumed;
-            Box::into_raw(Box::from_raw(&assoc as *const _ as *mut SctpAssociation))
-        },
-        Ok((None, consumed)) => {
-            unsafe {
-                *sbuf_len = consumed;
-            };
-            ptr::null_mut()
-        }
-        Err(_) => ptr::null_mut(),
+    if let Ok((sh, consumed)) = SctpCommonHeader::from_bytes(&rbuf) {
+        return match SctpAssociation::accept(
+            &from.unwrap().ip(),
+            &sh,
+            &rbuf[consumed..],
+            &mut sbuf,
+            &secret,
+        ) {
+            Ok((Some(assoc), consumed)) => unsafe {
+                *rbuf_len = consumed;
+                if sbuf.len() > 0 {
+                    *sbuf_len = sbuf.len();
+                }
+                Box::into_raw(Box::from_raw(&assoc as *const _ as *mut SctpAssociation))
+            },
+            Ok((None, consumed)) => {
+                unsafe {
+                    *rbuf_len = consumed;
+                    if sbuf.len() > 0 {
+                        *sbuf_len = sbuf.len();
+                    }
+                };
+                ptr::null_mut()
+            }
+            Err(_) => ptr::null_mut(),
+        };
+    } else {
+        return ptr::null_mut();
     }
+}
+
+#[no_mangle]
+pub extern "C" fn rusctp_assoc_free(assoc: *mut SctpAssociation) {
+    unsafe { Box::from_raw(assoc) };
 }
