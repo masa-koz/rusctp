@@ -28,6 +28,9 @@ rust-crypto = "^0.2"
 sna = "0.1"
 log = "0.4"
 libc = "0.2"
+[target.'cfg(target_family="windows")'.dependencies]
+winapi = { version = "0.3", features = ["winsock2", "ws2def", "ws2ipdef", "ws2tcpip"] }
+os_socketaddr = { git = "https://github.com/masa-koz/os_socketaddr", branch = "kozuka-add_support_windows"  }
 
 [dev-dependencies]
 mio = "0.6"
