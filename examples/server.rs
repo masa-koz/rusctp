@@ -47,9 +47,13 @@ fn main() {
     let send_bytes = args.get_str("--send_bytes");
     let _send_bytes = usize::from_str_radix(send_bytes, 10).unwrap();
 
-    let _server_ip = args.get_str("<ServerAddress>").parse::<IpAddr>().unwrap();
+    let server_ip = args.get_str("<ServerAddress>").parse::<IpAddr>().unwrap();
 
     let secret_key = (0..32).map(|_| rand::random::<u8>()).collect::<Vec<u8>>();
+
+    let mut config = SctpInitialConfig::new(rand::random::<u16>());
+    config.set_secret_key(secret_key.as_slice());
+    config.add_laddr(&server_ip).unwrap();
 
     let poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(1024);
@@ -197,7 +201,7 @@ fn main() {
                                 &header,
                                 &rbuf[off..len],
                                 &mut sbuf,
-                                &secret_key[..],
+                                &config,
                             ) {
                                 Ok((Some(assoc), consumed)) => {
                                     let mut raddr_map = RemoteAddressMap::new();

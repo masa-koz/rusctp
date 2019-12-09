@@ -11,6 +11,7 @@ extern crate sna;
 
 use std::cmp;
 use std::collections::{BTreeMap, VecDeque};
+use std::io::Write;
 use std::net::IpAddr;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -59,6 +60,13 @@ pub enum SctpError {
     ProtocolViolation = -7,
     // The passed packet is an "out of the blue" (OOTB).
     OOTB = -8,
+}
+
+#[derive(Debug)]
+pub struct SctpInitialConfig {
+    sh_local_port: u16,
+    laddr_list: Vec<IpAddr>,
+    secret_key: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -338,6 +346,29 @@ pub struct SctpStats {
     pub sent: usize,
 }
 
+impl SctpInitialConfig {
+    pub fn new(sh_local_port: u16) -> SctpInitialConfig {
+        SctpInitialConfig {
+            sh_local_port: sh_local_port,
+            laddr_list: Vec::new(),
+            secret_key: Vec::new(),
+        }
+    }
+
+    pub fn set_secret_key(&mut self, secret_key: &[u8]) {
+        self.secret_key.clear();
+        self.secret_key.write(secret_key);
+    }
+
+    pub fn add_laddr(&mut self, addr: &IpAddr) -> Result<()> {
+        if let Some(_) = self.laddr_list.iter().find(|x| *x == addr) {
+            return Err(SctpError::Done);
+        }
+        self.laddr_list.push(addr.clone());
+        Ok(())
+    }
+}
+
 impl SctpAssociation {
     pub fn connect(
         src_port: u16,
@@ -386,7 +417,7 @@ impl SctpAssociation {
         header: &SctpCommonHeader,
         rbuf: &[u8],
         sbuf: &mut Vec<u8>,
-        secret_key: &[u8],
+        config: &SctpInitialConfig,
     ) -> Result<(Option<SctpAssociation>, usize)> {
         trace!("accept from={}, len={}", rip, rbuf.len());
         let (chunk, consumed) = match SctpChunk::from_bytes(rbuf) {
@@ -429,7 +460,9 @@ impl SctpAssociation {
                     time: now.as_secs(),
                 };
                 let mut cookie_bytes = Vec::new();
-                cookie.to_bytes(secret_key, &mut cookie_bytes).unwrap();
+                cookie
+                    .to_bytes(config.secret_key.as_slice(), &mut cookie_bytes)
+                    .unwrap();
                 init_ack_contents
                     .params
                     .push(SctpParameter::Cookie(cookie_bytes));
@@ -441,12 +474,13 @@ impl SctpAssociation {
                 return Ok((None, consumed));
             }
             SctpChunk::CookieEcho(v) => {
-                let (cookie, _) = match SctpStateCookie::from_bytes(secret_key, &v) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return Err(e);
-                    }
-                };
+                let (cookie, _) =
+                    match SctpStateCookie::from_bytes(config.secret_key.as_slice(), &v) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    };
                 let (peer_init_tsn, peer_a_rwnd, peer_num_in_strm, peer_num_out_strm, peer_params) =
                     match cookie.init {
                         SctpChunk::Init(v) => (
@@ -472,6 +506,7 @@ impl SctpAssociation {
                     my_init_tsn,
                 )
                 .unwrap();
+                trace!("laddr={:?}", assoc.laddr_list);
 
                 trace!("new association my_vtag={}", cookie.my_vtag);
 
@@ -509,6 +544,9 @@ impl SctpAssociation {
                         ret.unwrap()
                     }
                 };
+                for laddr in &config.laddr_list {
+                    assoc.add_laddr(laddr);
+                }
 
                 assoc.recovery.initialize(peer_a_rwnd as usize);
                 assoc.recovery.establish();

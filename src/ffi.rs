@@ -87,6 +87,47 @@ pub extern "C" fn rusctp_version() -> *const u8 {
 }
 
 #[no_mangle]
+pub extern "C" fn rusctp_config_new(sh_local_port: u16) -> *mut SctpInitialConfig {
+    Box::into_raw(Box::new(SctpInitialConfig::new(sh_local_port)))
+}
+
+#[no_mangle]
+pub extern "C" fn rusctp_config_set_secret_key(
+    config: &mut SctpInitialConfig,
+    secret: *mut u8,
+    secret_len: size_t,
+) -> c_int {
+    let secret = unsafe { slice::from_raw_parts_mut(secret, secret_len) };
+    config.set_secret_key(secret);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn rusctp_config_add_laddr(
+    config: &mut SctpInitialConfig,
+    laddr_sa: &sockaddr,
+    laddr_salen: size_t,
+) -> c_int {
+    if laddr_salen == 0 {
+        return -1;
+    }
+    let laddr = unsafe {
+        OsSocketAddr::from_raw_parts(laddr_sa as *const _ as *const u8, laddr_salen)
+            .into_addr()
+            .unwrap()
+    };
+    match config.add_laddr(&laddr.ip()) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rusctp_config_free(config: *mut SctpInitialConfig) {
+    unsafe { Box::from_raw(config) };
+}
+
+#[no_mangle]
 pub extern "C" fn rusctp_header_info(
     rbuf: *mut u8,
     rbuf_len: size_t,
@@ -117,8 +158,7 @@ pub extern "C" fn rusctp_accept(
     rbuf_len: *mut size_t,
     sbuf: *mut u8,
     sbuf_len: *mut size_t,
-    secret: *mut u8,
-    secret_len: size_t,
+    config: &SctpInitialConfig,
 ) -> *mut SctpAssociation {
     if from_salen == 0 {
         return ptr::null_mut();
@@ -131,7 +171,6 @@ pub extern "C" fn rusctp_accept(
     }
     let rbuf = unsafe { slice::from_raw_parts_mut(rbuf, *rbuf_len) };
     let mut sbuf = unsafe { Vec::from_raw_parts(sbuf, 0, *sbuf_len) };
-    let secret = unsafe { slice::from_raw_parts_mut(secret, secret_len) };
 
     if let Ok((sh, consumed)) = SctpCommonHeader::from_bytes(&rbuf) {
         return match SctpAssociation::accept(
@@ -139,7 +178,7 @@ pub extern "C" fn rusctp_accept(
             &sh,
             &rbuf[consumed..],
             &mut sbuf,
-            &secret,
+            config,
         ) {
             Ok((Some(assoc), consumed)) => unsafe {
                 *rbuf_len = consumed;
