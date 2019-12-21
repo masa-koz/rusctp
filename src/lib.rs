@@ -132,9 +132,9 @@ struct SctpRemoteAddress {
 }
 
 impl SctpRemoteAddress {
-    fn new(addr: &IpAddr, mtu: usize, pathid: usize) -> Self {
+    fn new(addr: IpAddr, mtu: usize, pathid: usize) -> Self {
         SctpRemoteAddress {
-            addr: addr.clone(),
+            addr: addr,
             mtu: mtu,
             state: SctpRemoteAddressState::Deleted,
             pathid: pathid,
@@ -162,9 +162,9 @@ struct SctpLocalAddress {
 }
 
 impl SctpLocalAddress {
-    fn new(addr: &IpAddr) -> Self {
+    fn new(addr: IpAddr) -> Self {
         SctpLocalAddress {
-            addr: addr.clone(),
+            addr: addr,
             state: SctpLocalAddressState::Empty,
         }
     }
@@ -360,8 +360,8 @@ impl SctpInitialConfig {
         self.secret_key.write(secret_key);
     }
 
-    pub fn add_laddr(&mut self, addr: &IpAddr) -> Result<()> {
-        if let Some(_) = self.laddr_list.iter().find(|x| *x == addr) {
+    pub fn add_laddr(&mut self, addr: IpAddr) -> Result<()> {
+        if let Some(_) = self.laddr_list.iter().find(|x| *x == &addr) {
             return Err(SctpError::Done);
         }
         self.laddr_list.push(addr.clone());
@@ -375,15 +375,15 @@ impl SctpAssociation {
         dst_port: u16,
         src_ip_list: &Vec<IpAddr>,
         dst_ip: &IpAddr,
-    ) -> Result<SctpAssociation> {
+    ) -> Result<Box<SctpAssociation>> {
         let my_vtag = rand::random::<u32>();
         let init_tsn = rand::random::<u32>();
         let mut assoc = SctpAssociation::new(src_port, dst_port, my_vtag, 65536, init_tsn).unwrap();
 
         for src_ip in src_ip_list {
-            assoc.add_laddr(src_ip).unwrap();
+            assoc.add_laddr(*src_ip).unwrap();
         }
-        let pathid = assoc.add_raddr(&dst_ip).unwrap();
+        let pathid = assoc.add_raddr(*dst_ip).unwrap();
         assoc.state = SctpAssociationState::CookieWait;
 
         let params: Vec<SctpParameter> = assoc
@@ -418,7 +418,7 @@ impl SctpAssociation {
         rbuf: &[u8],
         sbuf: &mut Vec<u8>,
         config: &SctpInitialConfig,
-    ) -> Result<(Option<SctpAssociation>, usize)> {
+    ) -> Result<(Option<Box<SctpAssociation>>, usize)> {
         trace!("accept from={}, len={}", rip, rbuf.len());
         let (chunk, consumed) = match SctpChunk::from_bytes(rbuf) {
             Ok(v) => v,
@@ -527,7 +527,7 @@ impl SctpAssociation {
                             continue;
                         }
                     };
-                    if let Err(e) = assoc.add_raddr(&ip) {
+                    if let Err(e) = assoc.add_raddr(ip) {
                         if e != SctpError::Done {
                             return Err(e);
                         }
@@ -537,7 +537,7 @@ impl SctpAssociation {
                 let pathid = match assoc.get_pathid(&cookie.dst_addr) {
                     Some(v) => v,
                     None => {
-                        let ret = assoc.add_raddr(&cookie.dst_addr);
+                        let ret = assoc.add_raddr(cookie.dst_addr);
                         if ret.is_err() {
                             return Err(ret.unwrap_err());
                         }
@@ -545,7 +545,7 @@ impl SctpAssociation {
                     }
                 };
                 for laddr in &config.laddr_list {
-                    assoc.add_laddr(laddr);
+                    assoc.add_laddr(*laddr);
                 }
 
                 assoc.recovery.initialize(peer_a_rwnd as usize);
@@ -596,9 +596,9 @@ impl SctpAssociation {
         vtag: u32,
         a_rwnd: u32,
         init_tsn: u32,
-    ) -> Result<SctpAssociation> {
+    ) -> Result<Box<SctpAssociation>> {
         let trace_id = format!("{:X}", vtag);
-        let assoc = SctpAssociation {
+        let assoc = Box::new(SctpAssociation {
             src_port: src_port,
             dst_port: dst_port,
             my_vtag: vtag,
@@ -630,7 +630,7 @@ impl SctpAssociation {
 
             trace_id: trace_id.clone(),
             error_cause: None,
-        };
+        });
         Ok(assoc)
     }
 
@@ -646,8 +646,8 @@ impl SctpAssociation {
         Ok(num_out_strm)
     }
 
-    pub fn add_laddr(&mut self, addr: &IpAddr) -> Result<()> {
-        let ret = self.laddr_list.iter_mut().find(|x| x.addr == *addr);
+    pub fn add_laddr(&mut self, addr: IpAddr) -> Result<()> {
+        let ret = self.laddr_list.iter_mut().find(|x| x.addr == addr);
         let mut laddr = if ret.is_some() {
             ret.unwrap()
         } else {
@@ -680,8 +680,8 @@ impl SctpAssociation {
         Ok(())
     }
 
-    fn add_raddr(&mut self, addr: &IpAddr) -> Result<usize> {
-        let ret = self.raddr_list.iter_mut().find(|x| x.addr == *addr);
+    fn add_raddr(&mut self, addr: IpAddr) -> Result<usize> {
+        let ret = self.raddr_list.iter_mut().find(|x| x.addr == addr);
         let mut raddr = if ret.is_some() {
             ret.unwrap()
         } else {
@@ -909,7 +909,7 @@ impl SctpAssociation {
                         .unwrap();
 
                     remote_addresses.iter().for_each(|ip| {
-                        if let Err(e) = self.add_raddr(&ip) {
+                        if let Err(e) = self.add_raddr(*ip) {
                             if e != SctpError::Done {
                                 trace!(
                                     "{} failed to add remote address, addr={}",
@@ -920,10 +920,10 @@ impl SctpAssociation {
                         }
                     });
 
-                    let pathid = match self.get_pathid(&from) {
+                    let pathid = match self.get_pathid(from) {
                         Some(v) => v,
                         None => {
-                            let ret = self.add_raddr(&from);
+                            let ret = self.add_raddr(*from);
                             if ret.is_err() {
                                 return Err(ret.unwrap_err());
                             }

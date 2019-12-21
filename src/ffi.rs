@@ -116,7 +116,7 @@ pub extern "C" fn rusctp_config_add_laddr(
             .into_addr()
             .unwrap()
     };
-    match config.add_laddr(&laddr.ip()) {
+    match config.add_laddr(laddr.ip()) {
         Ok(()) => 0,
         Err(_) => -1,
     }
@@ -161,42 +161,48 @@ pub extern "C" fn rusctp_accept(
     config: &SctpInitialConfig,
 ) -> *mut SctpAssociation {
     if from_salen == 0 {
+        unsafe {
+            *sbuf_len = 0;
+        }
         return ptr::null_mut();
     }
     let from = unsafe {
         OsSocketAddr::from_raw_parts(from_sa as *const _ as *const u8, from_salen).into_addr()
     };
     if from.is_none() {
+        unsafe {
+            *sbuf_len = 0;
+        }
         return ptr::null_mut();
     }
     let rbuf = unsafe { slice::from_raw_parts_mut(rbuf, *rbuf_len) };
-    let mut sbuf = unsafe { Vec::from_raw_parts(sbuf, 0, *sbuf_len) };
+    let mut sbuf1 = Vec::new();
 
     if let Ok((sh, consumed)) = SctpCommonHeader::from_bytes(&rbuf) {
-        return match SctpAssociation::accept(
+        match SctpAssociation::accept(
             &from.unwrap().ip(),
             &sh,
             &rbuf[consumed..],
-            &mut sbuf,
+            &mut sbuf1,
             config,
         ) {
             Ok((Some(assoc), consumed)) => unsafe {
                 *rbuf_len = consumed;
-                if sbuf.len() > 0 {
-                    *sbuf_len = sbuf.len();
-                }
-                Box::into_raw(Box::from_raw(&assoc as *const _ as *mut SctpAssociation))
+                *sbuf_len = std::cmp::min(*sbuf_len, sbuf1.len());
+                ptr::copy(sbuf1.as_mut_ptr(), sbuf, *sbuf_len);
+                return Box::into_raw(assoc);
             },
             Ok((None, consumed)) => {
                 unsafe {
                     *rbuf_len = consumed;
-                    if sbuf.len() > 0 {
-                        *sbuf_len = sbuf.len();
-                    }
+                    *sbuf_len = std::cmp::min(*sbuf_len, sbuf1.len());
+                    ptr::copy(sbuf1.as_mut_ptr(), sbuf, *sbuf_len);
                 };
-                ptr::null_mut()
+                return ptr::null_mut();
             }
-            Err(_) => ptr::null_mut(),
+            Err(_) => {
+                return ptr::null_mut();
+            }
         };
     } else {
         return ptr::null_mut();

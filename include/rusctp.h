@@ -59,7 +59,7 @@ extern "C"
         uint8_t *rbuf,
         size_t *rbuf_len,
         uint8_t *sbuf,
-        size_t sbuf_len,
+        size_t *sbuf_len,
         rusctp_init_config *config);
 
     void rusctp_assoc_free(rusctp_assoc *assoc);

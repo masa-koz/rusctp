@@ -39,4 +39,4 @@ env_logger = "0.7.1"
 docopt = "1"
 
 [lib]
-crate-type = ["lib", "staticlib", "cdylib"]
+crate-type = ["lib", "staticlib"]
