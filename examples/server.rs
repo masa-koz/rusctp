@@ -86,22 +86,29 @@ fn main() {
         });
 
         for (ref mut assoc, _) in peers.values_mut() {
-            if assoc.is_established() {
-                let readable: Vec<u16> = assoc.get_readable().collect();
-                for strmid in readable {
-                    readbuf.clear();
-                    match assoc.read_from_stream(strmid, &mut readbuf) {
-                        Ok(len) => {
-                            info!("read {} bytes from Stream {}", len, strmid);
-                        }
-                        Err(e) => {
-                            error!("SctpAssociation::read_from_stream() failed {:?}", e);
-                            break;
-                        }
+            'read: loop {
+                if assoc.is_established() {
+                    let readable: Vec<u16> = assoc.get_readable().collect();
+                    if readable.is_empty() {
+                        break 'read;
                     }
-                    assoc
-                        .write_into_stream(strmid, send_data, false, true)
-                        .unwrap();
+                    for strmid in readable {
+                        readbuf.clear();
+                        match assoc.read_from_stream(strmid, &mut readbuf) {
+                            Ok(len) => {
+                                info!("read {} bytes from Stream {}", len, strmid);
+                            }
+                            Err(e) => {
+                                error!("SctpAssociation::read_from_stream() failed {:?}", e);
+                                break;
+                            }
+                        }
+                        assoc
+                            .write_into_stream(strmid, send_data, false, true)
+                            .unwrap();
+                    }
+                } else {
+                    break 'read;
                 }
             }
         }
