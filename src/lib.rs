@@ -367,7 +367,7 @@ impl SctpAssociation {
             (
                 SctpChunk::Init(SctpInitChunk {
                     init_tag: my_vtag,
-                    a_rwnd: 65536,
+                    a_rwnd: 655360,
                     num_out_strm: 10,
                     num_in_strm: 2048,
                     init_tsn: init_tsn,
@@ -408,7 +408,7 @@ impl SctpAssociation {
                 };
                 let mut init_ack_contents = SctpInitChunk {
                     init_tag: my_vtag,
-                    a_rwnd: 65536,
+                    a_rwnd: 655360,
                     num_out_strm: 10,
                     num_in_strm: 2048,
                     init_tsn: rand::random::<u32>(),

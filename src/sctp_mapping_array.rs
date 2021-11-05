@@ -85,17 +85,20 @@ impl SctpMappingArray {
         if moved > 0 {
             for i in 0..moved {
                 self.storage[i] = 0x00u8;
+                self.base_tsn += 8;
             }
             self.storage.rotate_left(moved);
-            self.base_tsn += 8;
+            
         }
 
         trace!(
-            "{} update base_tsn={}, cummulative_tsn={}, largest_tsn={}",
+            "{} update tsn={}, base_tsn={}, cummulative_tsn={}, largest_tsn={}, moved={}",
             self.trace_id,
+            tsn,
             self.base_tsn,
             cummulative_tsn,
-            self.largest_tsn
+            self.largest_tsn,
+            moved
         );
         if cummulative_tsn > self.cummulative_tsn {
             self.cummulative_tsn = cummulative_tsn;
@@ -116,6 +119,9 @@ impl SctpMappingArray {
                 } else {
                     0 - (0xffffffff - self.cummulative_tsn.0 + 1 + self.base_tsn.0 + 1) as i16
                 };
+                if offset <= -8 {
+                    error!("offset: {}, cumulative tsn: {}, largest tsn: {}, base_tsn: {}", offset, self.cummulative_tsn.0, self.largest_tsn.0, self.base_tsn);
+                }
                 assert!(offset > -8);
             }
 

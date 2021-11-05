@@ -103,9 +103,10 @@ fn main() {
                                 break;
                             }
                         }
-                        assoc
+                        /*assoc
                             .write_into_stream(strmid, send_data, false, true)
                             .unwrap();
+                            */
                     }
                 } else {
                     break 'read;
