@@ -164,6 +164,10 @@ fn main() {
                             match assoc.recv(&from.ip(), &rbuf[off..len], &mut sbuf) {
                                 Ok(v) => {
                                     off += v;
+                                    if assoc.is_closed() {
+                                        rip = Some(from.ip());
+                                    }    
+                        
                                 }
                                 Err(e) => {
                                     error!("SctpAssociation::recv() failed: {:?}", e);
@@ -198,6 +202,7 @@ fn main() {
                 }
             }
             if assoc.get_pending().count() == 0 {
+                info!("Close Association");
                 assoc.close().unwrap();
             }
         }
@@ -216,11 +221,11 @@ fn main() {
                 }
             }
         }
-        if assoc.is_closed() {
-            break 'main;
-        }
-
         if sbuf.is_empty() {
+            if assoc.is_closed() {
+                info!("Association closed");
+                break 'main;
+            }    
             'send: loop {
                 match assoc.send(&mut sbuf) {
                     Ok((_, rip1)) => {

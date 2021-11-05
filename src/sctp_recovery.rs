@@ -975,14 +975,6 @@ impl SctpRecovery {
 
     pub fn on_shutdown_ack_received(&mut self) {
         self.t2_shutdown_timeout = None;
-        // Send Shutdown-Complete
-        let shutdown_complete = SctpChunk::ShutdownComplete(false);
-        trace!("{} send SHUTDONW-COMPLETION", self.trace_id);
-        self.control_waiting_trans.insert(
-            self.next_control_sequence.0,
-            (shutdown_complete, self.primary_path.unwrap_or(0)),
-        );
-        self.next_control_sequence += 1;
     }
 }
 
