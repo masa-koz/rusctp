@@ -938,6 +938,7 @@ impl SctpAssociation {
                     if self.state == SctpAssociationState::ShutdownSent {
                         self.state = SctpAssociationState::Closed;
                         self.recovery.on_shutdown_ack_received();
+                        self.send_shutdown_complete(sbuf);
                     }
                 }
                 SctpChunk::CookieAck => {
@@ -1339,6 +1340,24 @@ impl SctpAssociation {
         });
         header.to_bytes(sbuf).unwrap();
         abort.to_bytes(sbuf).unwrap();
+        self.state = SctpAssociationState::Closed;
+
+        sbuf.len() - old_len
+    }
+
+    fn send_shutdown_complete(&mut self, sbuf: &mut Vec<u8>) -> usize {
+        let old_len = sbuf.len();
+        let header = SctpCommonHeader {
+            src_port: self.src_port,
+            dst_port: self.dst_port,
+            vtag: self.peer_vtag,
+            checksum: 0,
+        };
+        // Send Shutdown-Complete
+        let shutdown_complete = SctpChunk::ShutdownComplete(false);
+        trace!("{} send SHUTDONW-COMPLETION", self.trace_id);
+        header.to_bytes(sbuf).unwrap();
+        shutdown_complete.to_bytes(sbuf).unwrap();
         self.state = SctpAssociationState::Closed;
 
         sbuf.len() - old_len
